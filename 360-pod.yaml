@@ -1,0 +1,115 @@
+esphome:
+  name: 360-pod
+  friendly_name: 360_Pod
+
+esp32:
+  board: esp32-s2-saola-1
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: "YOUR_GENERATED_API_KEY"
+
+ota:
+  password: "YOUR_OTA_PASSWORD"
+
+wifi:
+  ssid: "YOUR_WIFI_SSID"
+  password: "YOUR_WIFI_PASSWORD"
+
+captive_portal:
+
+globals:
+  - id: is_spinning
+    type: bool
+    initial_value: 'false'
+
+stepper:
+  - platform: uln2003
+    id: my_stepper
+    pin_a: GPIO9
+    pin_b: GPIO7
+    pin_c: GPIO5
+    pin_d: GPIO3
+    max_speed: 250 steps/s
+    step_mode: HALF_STEP
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO12
+      mode: INPUT_PULLUP
+      inverted: true
+    id: control_button
+    on_click:
+      - min_length: 50ms
+        max_length: 1500ms
+        then:
+          - script.execute: toggle_spin
+      - min_length: 1500ms
+        max_length: 5000ms
+        then:
+          - script.execute: go_home
+
+number:
+  - platform: template
+    name: "Stepper Speed"
+    id: stepper_speed
+    min_value: 50
+    max_value: 1020
+    step: 10
+    unit_of_measurement: "steps/s"
+    initial_value: 120
+    optimistic: true
+    on_value:
+      then:
+        - stepper.set_speed:
+            id: my_stepper
+            speed: !lambda 'return id(stepper_speed).state;'
+
+button:
+  - platform: template
+    name: "Toggle Spin"
+    on_press:
+      then:
+        - script.execute: toggle_spin
+
+  - platform: template
+    name: "Reset to Home"
+    on_press:
+      then:
+        - script.execute: go_home
+
+script:
+  - id: toggle_spin
+    then:
+      - if:
+          condition:
+            lambda: 'return id(is_spinning);'
+          then:
+            - stepper.set_target:
+                id: my_stepper
+                target: !lambda 'return id(my_stepper).current_position;'
+            - globals.set:
+                id: is_spinning
+                value: 'false'
+          else:
+            - globals.set:
+                id: is_spinning
+                value: 'true'
+            - stepper.set_target:
+                id: my_stepper
+                target: !lambda 'return id(my_stepper).current_position + 4096;'
+
+  - id: go_home
+    then:
+      - stepper.set_target:
+          id: my_stepper
+          target: 0
+      - globals.set:
+          id: is_spinning
+          value: 'false'
+
